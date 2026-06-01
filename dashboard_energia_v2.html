@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>Monitor Energético</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --border: rgba(255,255,255,0.07);
+    --text: #f0f0f8;
+    --muted: rgba(240,240,248,0.45);
+    --hint: rgba(240,240,248,0.22);
+    --volt-color: #5b8def;
+    --curr-color: #3dd9a4;
+    --pot-color: #f06a3a;
+    --energ-color: #e0a93b;
+    --normal: #3dd9a4;
+    --alerta: #e0a93b;
+    --critico: #f06a3a;
+    --accent: #5b8def;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); font-family: 'Syne', sans-serif; color: var(--text); overscroll-behavior: none; }
+
+  .app { max-width: 430px; margin: 0 auto; min-height: 100vh; padding: 0 0 2.5rem; }
+
+  /* HEADER */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 3rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--bg); z-index: 10;
+  }
+  .topbar-left { display: flex; flex-direction: column; gap: 2px; }
+  .topbar-title { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+  .topbar-sub { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; font-weight: 300; }
+  .status-pill {
+    font-size: 11px; font-weight: 600; padding: 4px 12px;
+    border-radius: 999px; letter-spacing: 0.5px;
+    text-transform: uppercase; display: flex; align-items: center; gap: 5px;
+  }
+  .pill-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .status-normal  { background: rgba(61,217,164,0.12); color: var(--normal); }
+  .status-normal .pill-dot { background: var(--normal); animation: pulse-g 2s infinite; }
+  .status-alerta  { background: rgba(224,169,59,0.12); color: var(--alerta); }
+  .status-alerta .pill-dot { background: var(--alerta); animation: pulse-a 1.5s infinite; }
+  .status-critico { background: rgba(240,106,58,0.12); color: var(--critico); }
+  .status-critico .pill-dot { background: var(--critico); animation: pulse-r 1s infinite; }
+
+  @keyframes pulse-g { 0%,100%{opacity:1} 50%{opacity:.3} }
+  @keyframes pulse-a { 0%,100%{opacity:1} 50%{opacity:.3} }
+  @keyframes pulse-r { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+  /* ── BANNER DE ESTADO ── */
+  .status-banner {
+    margin: 1rem 1.25rem 0;
+    border-radius: 16px;
+    padding: 16px 18px;
+    display: flex; align-items: center; gap: 14px;
+    transition: background 0.4s, border-color 0.4s;
+    border: 1px solid transparent;
+  }
+  .status-banner.s-normal  { background: rgba(61,217,164,0.08); border-color: rgba(61,217,164,0.2); }
+  .status-banner.s-alerta  { background: rgba(224,169,59,0.08); border-color: rgba(224,169,59,0.2); }
+  .status-banner.s-critico { background: rgba(240,106,58,0.10); border-color: rgba(240,106,58,0.3); }
+  .banner-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+  .banner-text-title { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .banner-text-sub   { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .s-normal  .banner-text-title { color: var(--normal); }
+  .s-alerta  .banner-text-title { color: var(--alerta); }
+  .s-critico .banner-text-title { color: var(--critico); }
+
+  /* ── ALERTA DE PICO ── */
+  .spike-banner {
+    margin: 0.6rem 1.25rem 0;
+    background: rgba(240,106,58,0.10);
+    border: 1px solid rgba(240,106,58,0.3);
+    border-radius: 12px;
+    padding: 11px 14px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--critico);
+    animation: fadeIn 0.4s ease;
+  }
+  .spike-banner-icon { font-size: 18px; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+
+  /* ── CONFIG ── */
+  .config-panel {
+    margin: 0.7rem 1.25rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .config-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; cursor: pointer; user-select: none;
+  }
+  .config-toggle-label { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+  .config-arrow { color: var(--muted); font-size: 18px; transition: transform 0.2s; }
+  .config-arrow.open { transform: rotate(180deg); }
+  .config-fields { display: none; padding: 0 16px 16px; flex-direction: column; gap: 8px; }
+  .config-fields.open { display: flex; }
+  .cfg-label { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 2px; }
+  .cfg-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; font-family: 'DM Mono', monospace;
+    color: var(--text); outline: none; transition: border-color 0.2s;
+  }
+  .cfg-input:focus { border-color: var(--accent); }
+  .cfg-input::placeholder { color: var(--hint); }
+  .cfg-btn {
+    width: 100%; background: var(--accent); border: none; border-radius: 10px;
+    padding: 11px; font-size: 13px; font-family: 'Syne', sans-serif; font-weight: 700;
+    color: #fff; cursor: pointer; transition: opacity 0.2s; margin-top: 4px;
+    letter-spacing: 0.3px;
+  }
+  .cfg-btn:active { opacity: 0.7; }
+  .api-help { font-size: 11px; color: var(--hint); font-family: 'DM Mono', monospace; }
+  .api-help a { color: var(--volt-color); text-decoration: none; }
+
+  /* ONBOARDING STATE */
+  .onboarding {
+    margin: 1.5rem 1.25rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 20px;
+    text-align: center;
+    display: none;
+  }
+  .onboarding-icon { font-size: 40px; margin-bottom: 12px; }
+  .onboarding-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .onboarding-sub { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+  .onboarding-steps { text-align: left; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .onboarding-step { display: flex; gap: 10px; align-items: flex-start; }
+  .step-num { min-width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-text { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .step-text strong { color: var(--text); }
+  .onboarding-btn { width: 100%; background: var(--accent); border: none; border-radius: 10px; padding: 12px; font-size: 13px; font-family: 'Syne', sans-serif; font-weight: 700; color: #fff; cursor: pointer; }
+
+  /* ERR */
+  .err-msg { font-size: 12px; color: var(--critico); font-family: 'DM Mono', monospace; padding: 0.75rem 1.25rem; }
+
+  /* ── MÉTRICAS ── */
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 1rem 1.25rem 0; }
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .metric-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    border-radius: 16px 16px 0 0;
+  }
+  .card-volt::before  { background: var(--volt-color); }
+  .card-curr::before  { background: var(--curr-color); }
+  .card-pot::before   { background: var(--pot-color); }
+  .card-energ::before { background: var(--energ-color); }
+
+  .m-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px; display: flex; align-items: center; gap: 4px;
+  }
+  .m-icon { width: 8px; height: 8px; border-radius: 50%; }
+  .icon-volt  { background: var(--volt-color); }
+  .icon-curr  { background: var(--curr-color); }
+  .icon-pot   { background: var(--pot-color); }
+  .icon-energ { background: var(--energ-color); }
+
+  .m-value { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .m-unit  { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+  .m-bar-bg { background: rgba(255,255,255,0.06); border-radius: 99px; height: 3px; margin-top: 8px; overflow: hidden; }
+  .m-bar-fill { height: 100%; border-radius: 99px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+  .bar-volt  { background: var(--volt-color); }
+  .bar-curr  { background: var(--curr-color); }
+  .bar-pot   { background: var(--pot-color); }
+  .bar-energ { background: var(--energ-color); }
+
+  /* ── EXPLICACIÓN SIMPLE bajo cada métrica ── */
+  .m-explain { font-size: 10px; color: var(--hint); margin-top: 7px; line-height: 1.4; font-family: 'DM Mono', monospace; }
+  .m-explain.good   { color: rgba(61,217,164,0.6); }
+  .m-explain.warn   { color: rgba(224,169,59,0.7); }
+  .m-explain.bad    { color: rgba(240,106,58,0.75); }
+
+  /* ── GRÁFICO ── */
+  .chart-card {
+    margin: 10px 1.25rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .chart-title { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+  .chart-legend { display: flex; gap: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .chart-wrap { position: relative; width: 100%; height: 130px; }
+
+  /* ── COSTO ── */
+  .cost-card {
+    margin: 10px 1.25rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .cost-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cost-header-left { display: flex; flex-direction: column; gap: 2px; }
+  .cost-title { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+  .cost-tariff-badge { font-size: 10px; color: var(--hint); font-family: 'DM Mono', monospace; }
+  .cost-tariff-selector { display: flex; gap: 4px; align-items: center; }
+  .tariff-btn {
+    font-size: 10px; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    font-family: 'DM Mono', monospace; transition: all 0.15s;
+  }
+  .tariff-btn.active { background: rgba(91,141,239,0.15); border-color: var(--accent); color: var(--accent); }
+  .tariff-auto-badge {
+    font-size: 9px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(61,217,164,0.12); color: var(--normal);
+    font-family: 'DM Mono', monospace; border: 1px solid rgba(61,217,164,0.2);
+  }
+  .cost-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .cost-cell {
+    padding: 14px 16px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .cost-cell:nth-child(2), .cost-cell:nth-child(4) { border-right: none; }
+  .cost-cell:nth-child(3), .cost-cell:nth-child(4) { border-bottom: none; }
+  .cost-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 3px; }
+  .cost-sublbl { font-size: 9px; color: var(--hint); font-family: 'DM Mono', monospace; margin-bottom: 6px; line-height: 1.3; }
+  .cost-val { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+  .cost-val.big { font-size: 24px; }
+  .cost-unit { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+
+
+
+  /* ── META MENSUAL ── */
+  .meta-card {
+    margin: 10px 1.25rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .meta-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .meta-title { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+  .meta-edit-btn {
+    font-size: 11px; color: var(--accent); background: none; border: none;
+    cursor: pointer; font-family: 'DM Mono', monospace; padding: 0;
+  }
+  .meta-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .meta-bar-bg { flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; }
+  .meta-bar-fill { height: 100%; border-radius: 99px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+  .meta-pct { font-size: 13px; font-weight: 700; font-family: 'DM Mono', monospace; min-width: 38px; text-align: right; }
+  .meta-detail { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .meta-detail span { color: var(--text); font-weight: 600; }
+  .meta-msg { font-size: 12px; margin-top: 10px; padding: 8px 12px; border-radius: 10px; line-height: 1.4; }
+  .meta-msg.ok   { background: rgba(61,217,164,0.08); color: var(--normal); }
+  .meta-msg.warn { background: rgba(224,169,59,0.08); color: var(--alerta); }
+  .meta-msg.over { background: rgba(240,106,58,0.10); color: var(--critico); }
+  .meta-input-row { display: flex; gap: 8px; margin-top: 10px; }
+  .meta-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 9px 12px; font-size: 13px; font-family: 'DM Mono', monospace;
+    color: var(--text); outline: none; transition: border-color 0.2s;
+  }
+  .meta-input:focus { border-color: var(--accent); }
+  .meta-input::placeholder { color: var(--hint); }
+  .meta-save-btn {
+    background: var(--accent); border: none; border-radius: 10px; padding: 9px 16px;
+    font-size: 12px; font-family: 'Syne', sans-serif; font-weight: 700;
+    color: #fff; cursor: pointer; white-space: nowrap;
+  }
+  .meta-save-btn:active { opacity: 0.7; }
+
+  /* ── FOOTER ── */
+  .footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem 0;
+  }
+  .ts-label { font-size: 11px; color: var(--hint); font-family: 'DM Mono', monospace; }
+  .refresh-indicator { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .ri-bar-bg { width: 60px; height: 3px; background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden; }
+  .ri-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; width: 100%; transition: width linear; }
+
+  /* LOADING OVERLAY */
+  #loadingOverlay {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    z-index: 100;
+  }
+  .lo-title { font-size: 22px; font-weight: 800; }
+  .lo-sub { font-size: 13px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .lo-dots { display: flex; gap: 8px; }
+  .lo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: ldot 1.2s infinite; }
+  .lo-dot:nth-child(2) { animation-delay: 0.2s; }
+  .lo-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes ldot { 0%,80%,100%{opacity:0.2;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+  <div class="lo-title">Monitor Energético</div>
+  <div class="lo-sub">iniciando...</div>
+  <div class="lo-dots">
+    <div class="lo-dot"></div><div class="lo-dot"></div><div class="lo-dot"></div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-title">Monitor Energético</div>
+      <div class="topbar-sub" id="topSub">—</div>
+    </div>
+    <div id="statusPill" class="status-pill status-normal">
+      <div class="pill-dot"></div>
+      <span id="statusText">Normal</span>
+    </div>
+  </div>
+
+  <!-- BANNER DE ESTADO (amigable) -->
+  <div class="status-banner s-normal" id="statusBanner">
+    <div class="banner-icon" id="bannerIcon">✅</div>
+    <div>
+      <div class="banner-text-title" id="bannerTitle">Todo está bien</div>
+      <div class="banner-text-sub" id="bannerSub">Tu instalación funciona con normalidad. No hay nada que hacer.</div>
+    </div>
+  </div>
+
+  <!-- ALERTA DE PICO (oculto por defecto) -->
+  <div class="spike-banner" id="spikeBanner" style="display:none;">
+    <div class="spike-banner-icon">⚡</div>
+    <div>Pico de consumo detectado — puede que hayas encendido un electrodoméstico de alto consumo.</div>
+  </div>
+
+  <!-- ONBOARDING (sin API Key) -->
+  <div class="onboarding" id="onboarding">
+    <div class="onboarding-icon">🔌</div>
+    <div class="onboarding-title">Conecta tu monitor</div>
+    <div class="onboarding-sub">Para ver tus datos reales, necesitas conectar este panel a tu Google Sheet donde el Arduino guarda las lecturas.</div>
+    <div class="onboarding-steps">
+      <div class="onboarding-step">
+        <div class="step-num">1</div>
+        <div class="step-text">Abre <strong>⚙ Configuración</strong> más abajo</div>
+      </div>
+      <div class="onboarding-step">
+        <div class="step-num">2</div>
+        <div class="step-text">Ingresa tu <strong>API Key de Google</strong> (la obtuviste al configurar el Arduino)</div>
+      </div>
+      <div class="onboarding-step">
+        <div class="step-num">3</div>
+        <div class="step-text">Presiona <strong>Conectar y monitorear</strong> — ¡listo!</div>
+      </div>
+    </div>
+    <div class="onboarding-sub" style="font-size:11px;">Por ahora estás viendo datos de ejemplo.</div>
+  </div>
+
+  <!-- CONFIG PANEL -->
+  <div class="config-panel">
+    <div class="config-toggle" onclick="toggleConfig()">
+      <span class="config-toggle-label">⚙ Configuración</span>
+      <span class="config-arrow" id="cfgArrow">▾</span>
+    </div>
+    <div class="config-fields" id="cfgFields">
+      <div>
+        <div class="cfg-label">API Key de Google Sheets</div>
+        <input class="cfg-input" id="apiKey" type="password" placeholder="AIza..."/>
+        <div class="api-help" style="margin-top:6px;">
+          Obtén tu key en <a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com</a>
+        </div>
+      </div>
+      <button class="cfg-btn" onclick="applyConfig()">Conectar y monitorear</button>
+    </div>
+  </div>
+
+  <div id="errMsg" class="err-msg" style="display:none;"></div>
+
+  <!-- MÉTRICAS -->
+  <div class="metrics">
+    <div class="metric-card card-volt">
+      <div class="m-label"><span class="m-icon icon-volt"></span>Voltaje</div>
+      <div><span class="m-value" id="voltVal">—</span><span class="m-unit">V</span></div>
+      <div class="m-bar-bg"><div class="m-bar-fill bar-volt" id="voltBar" style="width:0%"></div></div>
+      <div class="m-explain" id="voltExplain">Lo normal en Chile es ~220 V</div>
+    </div>
+    <div class="metric-card card-curr">
+      <div class="m-label"><span class="m-icon icon-curr"></span>Corriente</div>
+      <div><span class="m-value" id="corrVal">—</span><span class="m-unit">A</span></div>
+      <div class="m-bar-bg"><div class="m-bar-fill bar-curr" id="corrBar" style="width:0%"></div></div>
+      <div class="m-explain" id="corrExplain">Cuánto "caudal" de electricidad pasa</div>
+    </div>
+    <div class="metric-card card-pot">
+      <div class="m-label"><span class="m-icon icon-pot"></span>Potencia</div>
+      <div><span class="m-value" id="potVal">—</span><span class="m-unit">W</span></div>
+      <div class="m-bar-bg"><div class="m-bar-fill bar-pot" id="potBar" style="width:0%"></div></div>
+      <div class="m-explain" id="potExplain">Consumo en este momento</div>
+    </div>
+
+  </div>
+
+  <!-- GRÁFICO - solo Potencia, sin Voltaje/10 confuso -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="chart-title">Historial de consumo</div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--pot-color)"></div>Potencia (W)</div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="histChart" role="img" aria-label="Gráfico de historial de potencia"></canvas>
+    </div>
+  </div>
+
+  <!-- COSTO -->
+  <div class="cost-card">
+    <div class="cost-header">
+      <div class="cost-header-left">
+        <div class="cost-title">💸 Costo eléctrico estimado</div>
+        <div class="cost-tariff-badge" id="tariffLabel">Enel BT1 Santiago · con IVA</div>
+      </div>
+      <div class="cost-tariff-selector">
+        <span class="tariff-auto-badge" id="tariffAutoBadge" style="display:none;">Auto</span>
+        <button class="tariff-btn active" onclick="setTariff('BT1_T1',true)" id="btn_BT1_T1">T1</button>
+        <button class="tariff-btn" onclick="setTariff('BT1_T2',true)" id="btn_BT1_T2">T2</button>
+        <button class="tariff-btn" onclick="setTariff('BT1_T3',true)" id="btn_BT1_T3">T3</button>
+      </div>
+    </div>
+    <div class="cost-grid">
+      <div class="cost-cell">
+        <div class="cost-lbl">Ahora mismo</div>
+        <div class="cost-sublbl">Lo que gastas por hora a este ritmo</div>
+        <div><span class="cost-val" id="costInstant">—</span><span class="cost-unit">$/h</span></div>
+      </div>
+      <div class="cost-cell">
+        <div class="cost-lbl">Esta sesión</div>
+        <div class="cost-sublbl">Desde que encendiste el monitor</div>
+        <div><span class="cost-val" id="costSession">—</span><span class="cost-unit">CLP</span></div>
+      </div>
+      <div class="cost-cell">
+        <div class="cost-lbl">Si sigue así hoy</div>
+        <div class="cost-sublbl">Proyección al ritmo actual</div>
+        <div><span class="cost-val" id="costDay">—</span><span class="cost-unit">$/día</span></div>
+      </div>
+      <div class="cost-cell">
+        <div class="cost-lbl">Proyección mensual</div>
+        <div class="cost-sublbl">Incluye cargo fijo Enel</div>
+        <div><span class="cost-val big" id="costMonth">—</span><span class="cost-unit">$/mes</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- META MENSUAL -->
+  <div class="meta-card">
+    <div class="meta-header">
+      <div class="meta-title">🎯 Meta de gasto mensual</div>
+      <button class="meta-edit-btn" onclick="toggleMetaEdit()" id="metaEditBtn">Cambiar</button>
+    </div>
+    <div id="metaDisplay">
+      <div class="meta-bar-row">
+        <div class="meta-bar-bg"><div class="meta-bar-fill" id="metaBarFill" style="width:0%"></div></div>
+        <div class="meta-pct" id="metaPct">0%</div>
+      </div>
+      <div class="meta-detail">
+        <div>Proyección: <span id="metaProyVal">—</span></div>
+        <div>Meta: <span id="metaGoalVal">—</span></div>
+      </div>
+      <div class="meta-msg ok" id="metaMsg">Ingresa tu meta para ver el seguimiento</div>
+    </div>
+    <div id="metaEditRow" style="display:none;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">¿Cuánto quieres gastar en luz este mes? (en pesos)</div>
+      <div class="meta-input-row">
+        <input class="meta-input" id="metaInput" type="number" placeholder="Ej: 30000" min="1000"/>
+        <button class="meta-save-btn" onclick="saveMeta()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="ts-label" id="tsLabel">última lectura: —</div>
+    <div class="refresh-indicator">
+      <div class="ri-bar-bg"><div class="ri-bar-fill" id="riFill"></div></div>
+      <span id="riCount">5s</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+  const REFRESH_INTERVAL = 5000;
+  const SHEET_ID_DEFAULT = '1XVFXpZZWyT_KLGFED71ZLCApSdcaB6lUGnRGgEtzuG8';
+
+  let histChart = null;
+  let allRows = [];
+  let refreshTimer = null, countdownTimer = null;
+  let countdown = 5;
+  let configOpen = false;
+  let currentTariff = 'BT1_T1';
+  let tariffManual = false; // si el usuario eligió manualmente
+  let prevPot = null;       // para detección de pico
+  let spikeTimeout = null;
+
+  const TARIFAS = {
+    BT1_T1: { label: 'BT1 T1 (0–150 kWh)', energia:155.94, transporte:15.96, potencia:22.86, servicio:0.855, fijo_mes:709.54 },
+    BT1_T2: { label: 'BT1 T2 (151–300 kWh)', energia:155.94, transporte:15.96, potencia:23.81, servicio:0.855, fijo_mes:709.54 },
+    BT1_T3: { label: 'BT1 T3 (301–500 kWh)', energia:155.94, transporte:15.96, potencia:24.75, servicio:0.855, fijo_mes:709.54 },
+  };
+
+  // ── Selección automática de tramo según kWh acumulados del mes (estimados) ──
+  function autoSelectTariff(kwhSession) {
+    if (tariffManual) return;
+    // Estimamos consumo mensual: extrapolamos la sesión a 30 días
+    // (si no hay datos históricos, usamos la sesión como referencia mínima)
+    let id = 'BT1_T1';
+    if (kwhSession > 150) id = 'BT1_T2';
+    if (kwhSession > 300) id = 'BT1_T3';
+    currentTariff = id;
+    document.querySelectorAll('.tariff-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn_' + id).classList.add('active');
+    document.getElementById('tariffAutoBadge').style.display = 'inline';
+  }
+
+  function setTariff(id, manual) {
+    if (manual) { tariffManual = true; document.getElementById('tariffAutoBadge').style.display = 'none'; }
+    currentTariff = id;
+    document.querySelectorAll('.tariff-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn_' + id).classList.add('active');
+    if (allRows.length) renderCost(allRows);
+  }
+
+  function calcCostPerKwh(tariff) {
+    return tariff.energia + tariff.transporte + tariff.potencia + tariff.servicio;
+  }
+
+  // ── Texto amigable para voltaje ──
+  function voltExplainText(v) {
+    if (v < 200) return { text: 'Voltaje bajo — puede haber falla en la red', cls: 'bad' };
+    if (v < 210) return { text: 'Voltaje algo bajo', cls: 'warn' };
+    if (v <= 230) return { text: 'Normal para Chile (220 V)', cls: 'good' };
+    if (v <= 240) return { text: 'Levemente alto, pero aceptable', cls: 'warn' };
+    return { text: 'Voltaje alto — revisa tu instalación', cls: 'bad' };
+  }
+
+  // ── Texto amigable para corriente ──
+  function corrExplainText(a) {
+    if (a < 0.5) return { text: 'Consumo mínimo — casi nada encendido', cls: 'good' };
+    if (a < 3)   return { text: 'Consumo bajo — pocos aparatos', cls: 'good' };
+    if (a < 10)  return { text: 'Consumo moderado — uso normal del hogar', cls: 'good' };
+    if (a < 20)  return { text: 'Consumo alto — varios equipos activos', cls: 'warn' };
+    return { text: 'Consumo muy alto — revisa qué está encendido', cls: 'bad' };
+  }
+
+  // ── Texto amigable para potencia ──
+  function potExplainText(w) {
+    const ejemplos = [
+      [0,   10,  'Sin casi consumo', 'good'],
+      [10,  60,  'Como una ampolleta LED', 'good'],
+      [60,  200, 'Como un televisor', 'good'],
+      [200, 500, 'Como una PC encendida', 'good'],
+      [500, 1000,'Como un horno microondas', 'warn'],
+      [1000,2000,'Como una lavadora', 'warn'],
+      [2000,3000,'Como un hervidor eléctrico', 'bad'],
+      [3000,9999,'Consumo muy alto — aire acond. o calefactor', 'bad'],
+    ];
+    for (const [min,max,txt,cls] of ejemplos) {
+      if (w >= min && w < max) return { text: txt, cls };
+    }
+    return { text: 'Consumo extremo', cls: 'bad' };
+  }
+
+  // ── Texto amigable para energía acumulada ──
+  function energExplainText(wh) {
+    if (wh < 10)   return { text: 'Poquísimo, igual que cargar un teléfono', cls: 'good' };
+    if (wh < 100)  return { text: `≈ ${(wh/8).toFixed(1)} h de un televisor`, cls: 'good' };
+    if (wh < 1000) return { text: `${(wh/1000).toFixed(2)} kWh consumidos`, cls: 'good' };
+    return { text: `${(wh/1000).toFixed(2)} kWh — uso significativo`, cls: 'warn' };
+  }
+
+  // ── Detección de pico ──
+  function checkSpike(pot) {
+    if (prevPot !== null && pot > prevPot * 1.5 && (pot - prevPot) > 200) {
+      document.getElementById('spikeBanner').style.display = 'flex';
+      if (spikeTimeout) clearTimeout(spikeTimeout);
+      spikeTimeout = setTimeout(() => {
+        document.getElementById('spikeBanner').style.display = 'none';
+      }, 15000);
+    }
+    prevPot = pot;
+  }
+
+  // ── Banner de estado ──
+  function updateBanner(estado, pot) {
+    const banner = document.getElementById('statusBanner');
+    const icon   = document.getElementById('bannerIcon');
+    const title  = document.getElementById('bannerTitle');
+    const sub    = document.getElementById('bannerSub');
+    banner.className = 'status-banner';
+    if (estado === 'Normal') {
+      banner.classList.add('s-normal');
+      icon.textContent  = '✅';
+      title.textContent = 'Todo está bien';
+      sub.textContent   = 'Tu instalación funciona con normalidad. No hay nada que hacer.';
+    } else if (estado === 'Alerta') {
+      banner.classList.add('s-alerta');
+      icon.textContent  = '⚠️';
+      title.textContent = 'Atención requerida';
+      sub.textContent   = 'Hay una lectura fuera de lo normal. Revisa que no haya equipos inusuales encendidos.';
+    } else {
+      banner.classList.add('s-critico');
+      icon.textContent  = '🚨';
+      title.textContent = 'Estado crítico';
+      sub.textContent   = 'Hay un problema en tu instalación eléctrica. Considera revisar con un electricista.';
+    }
+  }
+
+  let metaGoal = parseInt(localStorage.getItem('metaGoal') || '0');
+  let metaEditOpen = false;
+
+  function toggleMetaEdit() {
+    metaEditOpen = !metaEditOpen;
+    document.getElementById('metaEditRow').style.display = metaEditOpen ? 'block' : 'none';
+    document.getElementById('metaEditBtn').textContent = metaEditOpen ? 'Cancelar' : 'Cambiar';
+    if (metaEditOpen && metaGoal) document.getElementById('metaInput').value = metaGoal;
+  }
+
+  function saveMeta() {
+    const val = parseInt(document.getElementById('metaInput').value);
+    if (!val || val < 1000) return;
+    metaGoal = val;
+    localStorage.setItem('metaGoal', val);
+    metaEditOpen = false;
+    document.getElementById('metaEditRow').style.display = 'none';
+    document.getElementById('metaEditBtn').textContent = 'Cambiar';
+    if (allRows.length) renderCost(allRows);
+  }
+
+  function updateMeta(costMonth) {
+    const goalEl  = document.getElementById('metaGoalVal');
+    const proyEl  = document.getElementById('metaProyVal');
+    const pctEl   = document.getElementById('metaPct');
+    const barEl   = document.getElementById('metaBarFill');
+    const msgEl   = document.getElementById('metaMsg');
+
+    const proy = Math.round(costMonth);
+    proyEl.textContent = '$' + proy.toLocaleString('es-CL');
+
+    if (!metaGoal) {
+      goalEl.textContent = '—';
+      pctEl.textContent  = '—';
+      barEl.style.width  = '0%';
+      barEl.style.background = 'var(--accent)';
+      msgEl.className    = 'meta-msg ok';
+      msgEl.textContent  = 'Toca "Cambiar" para definir tu meta de gasto mensual.';
+      return;
+    }
+
+    goalEl.textContent = '$' + metaGoal.toLocaleString('es-CL');
+    const pct = Math.min(150, (proy / metaGoal) * 100);
+    pctEl.textContent = Math.round((proy / metaGoal) * 100) + '%';
+    barEl.style.width = pct + '%';
+
+    if (proy < metaGoal * 0.75) {
+      barEl.style.background = 'var(--normal)';
+      msgEl.className  = 'meta-msg ok';
+      msgEl.textContent = '✅ Vas bien — al ritmo actual quedas dentro del presupuesto.';
+    } else if (proy < metaGoal) {
+      barEl.style.background = 'var(--alerta)';
+      msgEl.className  = 'meta-msg warn';
+      const diff = metaGoal - proy;
+      msgEl.textContent = `⚠️ Cerca del límite — te quedan $${diff.toLocaleString('es-CL')} de margen este mes.`;
+    } else {
+      barEl.style.background = 'var(--critico)';
+      msgEl.className  = 'meta-msg over';
+      const over = proy - metaGoal;
+      msgEl.textContent = `🚨 Vas a superar tu meta en $${over.toLocaleString('es-CL')} si sigues a este ritmo.`;
+    }
+  }
+
+  function renderCost(rows) {
+    const tariff = TARIFAS[currentTariff];
+    const rateKwh = calcCostPerKwh(tariff);
+    const last  = rows[rows.length - 1];
+    const pot   = parseFloat(last[3]) || 0;
+    const energ = parseFloat(last[4]) || 0;
+
+    autoSelectTariff(energ / 1000);
+
+    const costInstant = (pot / 1000) * rateKwh;
+    const costSession = (energ / 1000) * rateKwh;
+    const costDay     = costInstant * 24;
+    const costMonth   = costDay * 30 + tariff.fijo_mes;
+
+    document.getElementById('costInstant').textContent = Math.round(costInstant).toLocaleString('es-CL');
+    document.getElementById('costSession').textContent = Math.round(costSession).toLocaleString('es-CL');
+    document.getElementById('costDay').textContent     = Math.round(costDay).toLocaleString('es-CL');
+    document.getElementById('costMonth').textContent   = Math.round(costMonth).toLocaleString('es-CL');
+    document.getElementById('tariffLabel').textContent = 'Enel BT1 Santiago · ' + tariff.label;
+    updateMeta(costMonth);
+  }
+
+  const DEMO_ROWS = [
+    ['2026-05-27 10:00:00','220','1.45','319.00','0.88','Normal','240','20'],
+    ['2026-05-27 10:00:05','221','1.46','322.66','0.97','Normal','240','19'],
+    ['2026-05-27 10:00:10','219','1.44','315.36','1.06','Normal','240','21'],
+    ['2026-05-27 10:00:15','222','1.47','326.34','1.15','Normal','240','18'],
+    ['2026-05-27 10:00:20','220','1.45','319.00','1.24','Normal','240','20'],
+  ];
+
+  function toggleConfig() {
+    configOpen = !configOpen;
+    document.getElementById('cfgFields').classList.toggle('open', configOpen);
+    document.getElementById('cfgArrow').classList.toggle('open', configOpen);
+  }
+
+  function applyConfig() {
+    toggleConfig();
+    fetchData();
+  }
+
+  function getConfig() {
+    return {
+      sheetId: SHEET_ID_DEFAULT,
+      apiKey: document.getElementById('apiKey').value.trim()
+    };
+  }
+
+  async function fetchData() {
+    const { sheetId, apiKey } = getConfig();
+    const errEl = document.getElementById('errMsg');
+
+    if (!apiKey) {
+      errEl.style.display = 'block';
+      errEl.textContent = 'Mostrando datos de ejemplo. Ingresa tu API Key en Configuración para ver tus datos reales.';
+      document.getElementById('onboarding').style.display = 'block';
+      renderDashboard(DEMO_ROWS);
+      return;
+    }
+
+    document.getElementById('onboarding').style.display = 'none';
+    try {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:H?key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const rows = (data.values || []).slice(1);
+      if (!rows.length) throw new Error('Sheet sin datos');
+      allRows = rows;
+      errEl.style.display = 'none';
+      renderDashboard(allRows);
+    } catch (e) {
+      errEl.style.display = 'block';
+      errEl.textContent = 'Error al conectar: ' + e.message;
+      renderDashboard(allRows.length ? allRows : DEMO_ROWS);
+    }
+  }
+
+  function renderDashboard(rows) {
+    document.getElementById('loadingOverlay').style.display = 'none';
+
+    const last   = rows[rows.length - 1];
+    const volt   = parseFloat(last[1]) || 0;
+    const corr   = parseFloat(last[2]) || 0;
+    const pot    = parseFloat(last[3]) || 0;
+    const energ  = parseFloat(last[4]) || 0;
+    const estado = last[5] || 'Normal';
+    const limV   = parseFloat(last[6]) || 240;
+    const ts     = last[0] || '';
+
+    // Valores numéricos
+    document.getElementById('voltVal').textContent  = volt.toFixed(0);
+    document.getElementById('corrVal').textContent  = corr.toFixed(2);
+    document.getElementById('potVal').textContent   = pot.toFixed(0);
+    document.getElementById('tsLabel').textContent  = 'última lectura: ' + (ts.split(' ')[1] || ts);
+    document.getElementById('topSub').textContent   = ts;
+
+    // Barras
+    document.getElementById('voltBar').style.width  = Math.min(100,(volt/limV)*100).toFixed(1)+'%';
+    document.getElementById('corrBar').style.width  = Math.min(100,(corr/30)*100).toFixed(1)+'%';
+    document.getElementById('potBar').style.width   = Math.min(100,(pot/5000)*100).toFixed(1)+'%';
+
+    // Textos explicativos amigables
+    const vEx = voltExplainText(volt);
+    const el = document.getElementById('voltExplain');
+    el.textContent = vEx.text; el.className = 'm-explain ' + vEx.cls;
+
+    const cEx = corrExplainText(corr);
+    const cel = document.getElementById('corrExplain');
+    cel.textContent = cEx.text; cel.className = 'm-explain ' + cEx.cls;
+
+    const pEx = potExplainText(pot);
+    const pel = document.getElementById('potExplain');
+    pel.textContent = pEx.text; pel.className = 'm-explain ' + pEx.cls;
+
+
+    // Status pill
+    const pill = document.getElementById('statusPill');
+    pill.className = 'status-pill';
+    if (estado === 'Normal') pill.classList.add('status-normal');
+    else if (estado === 'Alerta') pill.classList.add('status-alerta');
+    else pill.classList.add('status-critico');
+    document.getElementById('statusText').textContent = estado;
+
+    // Banner amigable
+    updateBanner(estado, pot);
+
+    // Detección de pico
+    checkSpike(pot);
+
+    // Costos
+    renderCost(rows);
+
+
+
+    // Gráfico — solo potencia, sin voltaje/10
+    const labels  = rows.map((r,i) => r[0] ? (r[0].split(' ')[1]||'L'+(i+1)) : 'L'+(i+1));
+    const potData = rows.map(r => parseFloat(r[3]) || 0);
+
+    if (histChart) histChart.destroy();
+    const ctx = document.getElementById('histChart').getContext('2d');
+    histChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Potencia (W)',
+          data: potData,
+          borderColor: '#f06a3a',
+          backgroundColor: 'rgba(240,106,58,0.08)',
+          borderWidth: 2, pointRadius: 3, tension: 0.4, fill: true,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            ticks: { color: 'rgba(240,240,248,0.3)', font: { size: 9, family: 'DM Mono' }, autoSkip: true, maxTicksLimit: 5 },
+            grid: { display: false }, border: { display: false }
+          },
+          y: {
+            ticks: { color: 'rgba(240,240,248,0.3)', font: { size: 9, family: 'DM Mono' } },
+            grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  function startCountdown() {
+    countdown = REFRESH_INTERVAL / 1000;
+    if (countdownTimer) clearInterval(countdownTimer);
+    updateCountdownUI();
+    countdownTimer = setInterval(() => {
+      countdown--;
+      if (countdown < 0) countdown = REFRESH_INTERVAL / 1000;
+      updateCountdownUI();
+    }, 1000);
+  }
+
+  function updateCountdownUI() {
+    document.getElementById('riCount').textContent = countdown + 's';
+    const pct = (countdown / (REFRESH_INTERVAL / 1000)) * 100;
+    const fill = document.getElementById('riFill');
+    fill.style.transition = 'none';
+    fill.style.width = pct + '%';
+  }
+
+  function startRefresh() {
+    fetchData();
+    startCountdown();
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => { fetchData(); startCountdown(); }, REFRESH_INTERVAL);
+  }
+
+  window.addEventListener('load', () => setTimeout(() => startRefresh(), 500));
+</script>
+</body>
+</html>
